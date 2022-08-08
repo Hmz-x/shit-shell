@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include "param_types.h"
 #include "builtins.h"
 
 #define BUFF_SIZE 500
@@ -11,24 +12,18 @@
 const int builtin_count = 3;
 const char * builtins_arr[] = {"exit", "echo", "asgn"};
 
-struct Param_types
-{
-	char ** option_strs_mem;
-	char ** input_strs_mem;
-};
-
 /* TODO
  * char ** Cleanup
  * implement realloc
  */
 
 void
-cleanup_strs_mem (char ** readline_strs, int readline_strs_cnt)
+cleanup_strs (char ** strs, int strs_cnt)
 {
-	for (int i = readline_strs_cnt-1; i > -1; i--)
+	for (int i = strs_cnt-1; i > -1; i--)
 	{
-		free (readline_strs[i]);	
-		readline_strs[i] = NULL;
+		free (strs[i]);	
+		strs[i] = NULL;
 	}	
 }
 
@@ -40,14 +35,14 @@ msg_n_abort (const char * msg)
 }
 
 void
-exec_input (char ** readline_strs, int readline_strs_cnt)
+exec_input (struct Param_types param_types)
 {
 	int builtin_index = -1;	
 	
 	int i = 0;
 	while (builtins_arr[i])	
 	{
-		if (strcmp(readline_strs[0], builtins_arr[i]) == 0)
+		if (strcmp (param_types.input_strs_mem[0], builtins_arr[i]) == 0)
 		{
 			builtin_index = i;
 			break;
@@ -57,27 +52,28 @@ exec_input (char ** readline_strs, int readline_strs_cnt)
 
 	if (builtin_index == -1)
 	{
-		printf ("%s: builtin not found\n", readline_strs[0]);
+		printf ("%s: builtin not found\n", param_types.input_strs_mem[0]);
 	} else
 	{
 		switch (builtin_index)
 		{
 			case (0) :
-				exec_exit (readline_strs, readline_strs_cnt);
+				exec_exit (param_types);
 				break;
 			case (1) :
-				exec_echo (readline_strs, readline_strs_cnt);	
+				exec_echo (param_types);	
 				break;
 		}	
 	}
 }
 
-void
-parse_readline_strs (char ** readline_strs, int readline_strs_cnt, char ** option_strs,
-		char ** input_strs)
+struct Param_types
+parse_readline_strs (char ** readline_strs, int readline_strs_cnt, 
+		struct Param_types param_types)
 {
 	// syntax: command -option1 -option2 -option3 input input
-	
+
+	// Get the number of options passed	
 	int option_count = 0;
 	for (int i = 1; i < readline_strs_cnt; i++)
 	{
@@ -87,28 +83,49 @@ parse_readline_strs (char ** readline_strs, int readline_strs_cnt, char ** optio
 			break;
 	}
 	
-	option_strs = malloc (option_count * sizeof (char *));	
-	if (!option_strs)
+	param_types.option_strs_mem = malloc (option_count * sizeof (char *));	
+	if (!param_types.option_strs_mem)
 		msg_n_abort ("char ** malloc failed.\n");
 	
+	// Copy options from readline_strs to option_strs_mem
 	for (int i = 1, j = 0; i < option_count+1; i++, j++)
 	{
-		//option_strs[j] = malloc (strlen (readline_strs[i])+1);
-		option_strs[j] = readline_strs[i];
-	}
+		param_types.option_strs_mem[j] = malloc (strlen (readline_strs[i]) + 1);
+		if (!param_types.option_strs_mem[j])
+			msg_n_abort ("char * malloc failed.\n");
 
-	input_strs = malloc ((readline_strs_cnt-option_count) * sizeof (char *));	
-	if (!input_strs)
+		strncpy (param_types.option_strs_mem[j], 
+				readline_strs[i], strlen (readline_strs[i]));
+	}
+	param_types.option_count_mem = option_count;
+
+
+	param_types.input_strs_mem = malloc ((readline_strs_cnt-option_count) * 
+			sizeof (char *));	
+	if (!param_types.input_strs_mem)
 		msg_n_abort ("char ** malloc failed.\n");
 
-	// Point the command name (aka the first element in readline_strs) to the first 
-	// element in the input_strs
-	input_strs[0] = readline_strs[0];
+	// Copy the command name (aka the first element in readline_strs) to the first 
+	// element in param_types.input_strs_mem
+	param_types.input_strs_mem[0] = malloc (strlen (readline_strs[0]) + 1);
+	if (!param_types.input_strs_mem[0])
+		msg_n_abort ("char * malloc failed.\n");
+
+	strncpy (param_types.input_strs_mem[0], readline_strs[0], strlen (readline_strs[0]));
+
+	// Copy input from readline_strs to input_strs_mem
 	for (int i = option_count+1, j = 1; i < readline_strs_cnt; i++, j++)
 	{
-		input_strs[j] = readline_strs[i];
-	}
+		param_types.input_strs_mem[j] = malloc (strlen (readline_strs[i]) + 1);
+		if (!param_types.input_strs_mem[j])
+			msg_n_abort ("char * malloc failed.\n");
 
+		strncpy (param_types.input_strs_mem[j], 
+				readline_strs[i], strlen (readline_strs[i]));
+	}
+	param_types.input_count_mem = readline_strs_cnt - option_count;
+
+	return param_types;
 }
 
 char *
@@ -177,21 +194,19 @@ get_input_line ()
 }
 
 void
-input_debug (char ** option_strs, char ** input_strs)
+input_debug (struct Param_types param_types)
 {
 
-	printf ("command: %s\n", input_strs[0]);
+	printf ("command: %s\n", param_types.input_strs_mem[0]);
 
-	int i = 0;
-	while (option_strs[i])
+	for (int i = 0; i < param_types.option_count_mem; i++)
 	{
-		printf ("option: %s\n", option_strs[i++]);	
-	}
+		printf ("option: %s\n", param_types.option_strs_mem[i]);
+	}	
 
-	i = 0;
-	while (input_strs[i])
+	for (int i = 1; i < param_types.input_count_mem; i++)
 	{
-		printf ("input: %s\n", option_strs[i++]);	
+		printf ("input: %s\n", param_types.input_strs_mem[i]);
 	}
 }
 
@@ -205,7 +220,7 @@ main (int argc, char ** argv)
 	char * buffer = NULL;
 	struct Param_types param_types;
 	int readline_strs_cnt = 0;
-/*
+
 	while (true)
 	{
 		printf ("$ ");
@@ -215,12 +230,15 @@ main (int argc, char ** argv)
 		if (readline_strs_cnt == 0)
 			continue;
 
-		parse_readline_strs (readline_strs, readline_strs_cnt, option_strs, input_strs);
-		input_debug (option_strs, input_strs);
-		exec_input (readline_strs, readline_strs_cnt);
+		param_types = parse_readline_strs (readline_strs, readline_strs_cnt, param_types);
 
-		cleanup_strs_mem (readline_strs, readline_strs_cnt);
+		//input_debug (param_types);
+		exec_input (param_types);
+
+		cleanup_strs (param_types.input_strs_mem, param_types.input_count_mem);
+		cleanup_strs (param_types.option_strs_mem, param_types.option_count_mem);
+		cleanup_strs (readline_strs, readline_strs_cnt);
 	}
-*/
+
     return 0;
 }
