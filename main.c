@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include "param_types.h"
+#include "variables.h"
 #include "builtins.h"
 
 #define BUFF_SIZE 500
@@ -35,9 +36,10 @@ msg_n_abort (const char * msg)
 }
 
 void
-exec_input (struct Param_types param_types)
+exec_input (struct Param_types param_types, struct Variables vars)
 {
 	int builtin_index = -1;	
+	char * output = NULL;
 	
 	int i = 0;
 	while (builtins_arr[i])	
@@ -61,9 +63,17 @@ exec_input (struct Param_types param_types)
 				exec_exit (param_types);
 				break;
 			case (1) :
-				exec_echo (param_types);	
+				output = exec_echo (param_types);	
+				break;
+			case (2) :
+				output = exec_asgn (param_types, vars);	
 				break;
 		}	
+
+		printf ("output: %s", output);
+
+		free (output);
+		output = NULL;
 	}
 }
 
@@ -94,8 +104,7 @@ parse_readline_strs (char ** readline_strs, int readline_strs_cnt,
 		if (!param_types.option_strs_mem[j])
 			msg_n_abort ("char * malloc failed.\n");
 
-		strncpy (param_types.option_strs_mem[j], 
-				readline_strs[i], strlen (readline_strs[i]));
+		strcpy (param_types.option_strs_mem[j], readline_strs[i]);
 	}
 	param_types.option_count_mem = option_count;
 
@@ -111,7 +120,7 @@ parse_readline_strs (char ** readline_strs, int readline_strs_cnt,
 	if (!param_types.input_strs_mem[0])
 		msg_n_abort ("char * malloc failed.\n");
 
-	strncpy (param_types.input_strs_mem[0], readline_strs[0], strlen (readline_strs[0]));
+	strcpy (param_types.input_strs_mem[0], readline_strs[0]);
 
 	// Copy input from readline_strs to input_strs_mem
 	for (int i = option_count+1, j = 1; i < readline_strs_cnt; i++, j++)
@@ -120,8 +129,7 @@ parse_readline_strs (char ** readline_strs, int readline_strs_cnt,
 		if (!param_types.input_strs_mem[j])
 			msg_n_abort ("char * malloc failed.\n");
 
-		strncpy (param_types.input_strs_mem[j], 
-				readline_strs[i], strlen (readline_strs[i]));
+		strcpy (param_types.input_strs_mem[j], readline_strs[i]);
 	}
 	param_types.input_count_mem = readline_strs_cnt - option_count;
 
@@ -155,7 +163,7 @@ tokenize_input_buffer (char ** readline_strs, char * buffer)
 	// Tokenize each string within the buffer aka remove whitespace	
 	do 
 	{
-		if (!isspace(buffer[i]) && buffer[i] != '\0')
+		if (!isspace (buffer[i]) && buffer[i] != '\0')
 		{
 			input_strlen++;	
 		} else
@@ -197,6 +205,8 @@ void
 input_debug (struct Param_types param_types)
 {
 
+	printf ("option count: %d - input count: %d\n", param_types.option_count_mem, 
+			param_types.input_count_mem);
 	printf ("command: %s\n", param_types.input_strs_mem[0]);
 
 	for (int i = 0; i < param_types.option_count_mem; i++)
@@ -210,6 +220,16 @@ input_debug (struct Param_types param_types)
 	}
 }
 
+void
+vars_debug (struct Variables vars)
+{
+	for (int i = 0; i < vars.var_count_mem; i++)
+	{
+		printf ("[%d] - name: %s - type: %s - value: %s\n", i, vars.var_names_mem[i],
+				vars.var_types_mem[i], vars.var_values_mem[i]);
+	}
+}
+
 int
 main (int argc, char ** argv)
 {
@@ -218,8 +238,22 @@ main (int argc, char ** argv)
 		msg_n_abort ("char ** malloc failed.\n");
 
 	char * buffer = NULL;
-	struct Param_types param_types;
 	int readline_strs_cnt = 0;
+
+	struct Param_types param_types;
+	struct Variables vars;
+	vars.var_count_mem = 0;
+	vars.var_names_mem = malloc (INIT_STRS_NUM * sizeof (char *));
+	if (!vars.var_names_mem)
+		msg_n_abort ("char ** malloc failed.\n");
+	vars.var_types_mem = malloc (INIT_STRS_NUM * sizeof (char *));
+	if (!vars.var_types_mem)
+		msg_n_abort ("char ** malloc failed.\n");
+	vars.var_values_mem = malloc (INIT_STRS_NUM * sizeof (char *));
+	if (!vars.var_values_mem)
+		msg_n_abort ("char ** malloc failed.\n");
+
+
 
 	while (true)
 	{
@@ -231,12 +265,15 @@ main (int argc, char ** argv)
 			continue;
 
 		param_types = parse_readline_strs (readline_strs, readline_strs_cnt, param_types);
-
 		//input_debug (param_types);
-		exec_input (param_types);
-
+		exec_input (param_types, vars);
+		vars_debug (vars);
+		
+		// Cleanup
 		cleanup_strs (param_types.input_strs_mem, param_types.input_count_mem);
+		param_types.input_count_mem = 0;
 		cleanup_strs (param_types.option_strs_mem, param_types.option_count_mem);
+		param_types.option_count_mem = 0;
 		cleanup_strs (readline_strs, readline_strs_cnt);
 	}
 
